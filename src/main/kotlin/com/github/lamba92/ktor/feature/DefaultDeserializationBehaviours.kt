@@ -17,24 +17,5 @@ import me.liuwj.ktorm.schema.Table
 import kotlin.reflect.KClass
 
 object DefaultDeserializationBehaviours {
-    inline operator fun <reified T : Entity<T>> invoke(
-        httpMethod: HttpMethod,
-        entity: KClass<out Entity<*>>?,
-        table: Table<T>
-    ): PipelineInterceptor<Unit, ApplicationCall> = {
-        when (httpMethod) {
-            Get -> {
-                call.respond(entity)
-            }
-            Post, Put -> {
-                table.updateColumnsByEntity(call.receive())
-            }
-            Delete -> {
-                withContext(IO) {
-                    table.updateColumnsByEntity(call.receive(), false).delete()
-                }
-            }
-            else -> throw NotImplementedError("HTTP method ${httpMethod.value} has not yet been implemented for entity of type ${entity.entityClass.simpleName}")
-        }
-    }
+    private val behaviours = mapOf
 }
