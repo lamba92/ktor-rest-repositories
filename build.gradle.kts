@@ -19,6 +19,7 @@ repositories {
     mavenLocal()
     jcenter()
     maven("https://kotlin.bintray.com/ktor")
+    maven("https://jitpack.io")
 }
 
 dependencies {
@@ -34,6 +35,8 @@ dependencies {
 
     testImplementation(ktor("server-tests"))
     testImplementation(ktorm("support-sqlite"))
+    testImplementation("com.github.lamba92:kresourceloader:1.1.1")
+    testRuntime("org.xerial", "sqlite-jdbc", "3.28.0")
 }
 
 fun DependencyHandler.ktor(module: String, version: String = ktor_version): Any =

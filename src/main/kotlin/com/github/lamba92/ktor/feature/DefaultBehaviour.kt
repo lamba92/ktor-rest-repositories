@@ -14,6 +14,8 @@ import io.ktor.util.pipeline.PipelineContext
 import io.ktor.util.pipeline.PipelineInterceptor
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
+import me.liuwj.ktorm.database.Database
+import me.liuwj.ktorm.database.TransactionIsolation
 import me.liuwj.ktorm.dsl.insert
 import me.liuwj.ktorm.entity.Entity
 import me.liuwj.ktorm.entity.findById
@@ -24,32 +26,55 @@ object DefaultBehaviour {
 
     inline operator fun <reified T : Entity<T>> invoke(
         table: Table<T>,
-        httpMethod: HttpMethod
+        httpMethod: HttpMethod,
+        database: Database,
+        isolation: TransactionIsolation
     ): PipelineInterceptor<Unit, ApplicationCall> = {
         val entityId = call.parameters["entityId"]!!
         when (httpMethod) {
             Get -> {
-                call.respond(withContext(IO) { table.findById(entityId)!! })
+                call.respond(withContext(IO) {
+                    database.useTransaction(isolation) {
+                        try {
+                            table.findById(entityId)!!
+                        } catch (e: ClassCastException) {
+                            try {
+                                table.findById(entityId.toInt())!!
+                            } catch (e: ClassCastException) {
+                                table.findById(entityId.toDouble())!!
+                            }
+                        }
+
+                    }
+                })
             }
             Post -> {
                 val (entityReceived, _) = checkEntityIdAndRetrieveIt(table, entityId)
-                call.respond(table.updateColumnsByEntity(entityReceived))
+                call.respond(withContext(IO) {
+                    database.useTransaction(isolation) {
+                        table.updateColumnsByEntity(entityReceived)
+                    }
+                })
             }
             Put -> {
                 val (entityReceived, primaryKeyValue) = checkEntityIdAndRetrieveIt(table, entityId)
                 withContext(IO) {
-                    table.insert {
-                        entityReceived.properties.forEach { (name, value) ->
-                            it[name] to value
+                    database.useTransaction(isolation) {
+                        table.insert {
+                            entityReceived.properties.forEach { (name, value) ->
+                                it[name] to value
+                            }
                         }
                     }
                 }
                 call.respond(withContext(IO) { table.findById(primaryKeyValue)!! })
             }
             Delete -> {
-                val (entityReceived, _) = checkEntityIdAndRetrieveIt(table, entityId)
+                val (_, primaryKeyValue) = checkEntityIdAndRetrieveIt(table, entityId)
                 withContext(IO) {
-                    entityReceived.delete()
+                    database.useTransaction(isolation) {
+                        table.findById(primaryKeyValue)!!.delete()
+                    }
                 }
                 call.respond(HttpStatusCode.OK)
             }

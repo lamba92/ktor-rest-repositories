@@ -11,6 +11,8 @@ import io.ktor.routing.route
 import io.ktor.routing.routing
 import io.ktor.util.AttributeKey
 import io.ktor.util.pipeline.PipelineInterceptor
+import me.liuwj.ktorm.database.Database
+import me.liuwj.ktorm.database.TransactionIsolation
 import me.liuwj.ktorm.entity.Entity
 import me.liuwj.ktorm.jackson.KtormModule
 import me.liuwj.ktorm.schema.Table
@@ -25,8 +27,9 @@ class RestRepositories private constructor(val configuration: Configuration) {
         override val key = AttributeKey<RestRepositories>("RestRepositories")
 
         override fun install(pipeline: Application, configure: Configuration.() -> Unit): RestRepositories {
-
-            val feature = RestRepositories(Configuration().apply(configure))
+            val conf = Configuration().apply(configure)
+            assert(conf.cleansedPath.isNotBlank()) { "Repository path is blank or empty" }
+            val feature = RestRepositories(conf)
 
             with(pipeline) {
                 install(ContentNegotiation) {
@@ -50,7 +53,9 @@ class RestRepositories private constructor(val configuration: Configuration) {
                     .maxBy { it } ?: 7
                 logBuilder.appendln("Installing routes for ${table.entityClass?.simpleName}: ")
                 entityData.configuredMethods.forEach { (httpMethod, behaviour) ->
-                    val path = "${feature.configuration.path}/${entityData.entityPath}/{entityId}"
+                    val finalEntityPath = entityData.entityPath.filter { !it.isWhitespace() }
+                    assert(finalEntityPath.isNotBlank()) { "${table.entityClass?.simpleName} path is blank or empty" }
+                    val path = "${feature.configuration.cleansedPath}/${entityData.entityPath}/{entityId}"
                     logBuilder.appendln(
                         "     - ${httpMethod.value.padEnd(7)} | Authentication realm: ${(if (behaviour.isAuthenticated) behaviour.authName
                             ?: "Default" else "None").padEnd(longestNamedAuthRealm)} | $path"
@@ -76,20 +81,21 @@ class RestRepositories private constructor(val configuration: Configuration) {
         var path: String = "repositories"
     ) {
 
-        val entitiesConfiguration
-            get() = entitiesConfigurationMap.values.toList()
+        val cleansedPath
+            get() = path.filter { !it.isWhitespace() }
 
         inline fun <reified T : Entity<T>> registerEntity(
             table: Table<T>,
-            entityPath: String = table::class.simpleName!!.toLowerCase(),
+            database: Database,
+            defaultBehaviourIsolation: TransactionIsolation = TransactionIsolation.REPEATABLE_READ,
             httpMethodConf: EntitySetup<T>.() -> Unit
         ) {
-            entitiesConfigurationMap[table] = EntitySetup<T>(entityPath)
+            entitiesConfigurationMap[table] = EntitySetup<T>(table::class.simpleName!!.toLowerCase())
                 .apply(httpMethodConf)
                 .apply {
                     configuredMethods.forEach { (httpMethod, behaviour) ->
                         if (behaviour.action == null)
-                            behaviour.action = DefaultBehaviour(table, httpMethod)
+                            behaviour.action = DefaultBehaviour(table, httpMethod, database, defaultBehaviourIsolation)
                     }
                 }
         }
