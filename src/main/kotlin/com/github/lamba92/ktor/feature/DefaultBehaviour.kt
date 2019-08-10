@@ -20,7 +20,7 @@ import me.liuwj.ktorm.entity.findById
 import me.liuwj.ktorm.schema.NestedBinding
 import me.liuwj.ktorm.schema.Table
 
-object DefaultBehaviours {
+object DefaultBehaviour {
 
     inline operator fun <reified T : Entity<T>> invoke(
         table: Table<T>,
@@ -53,7 +53,7 @@ object DefaultBehaviours {
                 }
                 call.respond(HttpStatusCode.OK)
             }
-            else -> error("Default methods handles only GET, POST and PUT")
+            else -> error("Defaults handle only GET, POST, PUT and DELETE")
         }
     }
 
@@ -63,7 +63,7 @@ object DefaultBehaviours {
     ): Pair<T, Any> {
         val entityReceived = call.receive<T>()
         table.primaryKey ?: error("Table ${table.tableName} doesn't have a primary key.")
-        val primaryKeyName = (table.primaryKey.binding as NestedBinding).properties[0].name
+        val primaryKeyName = (table.primaryKey!!.binding as NestedBinding).properties[0].name
         val primaryKeyValue = entityReceived[primaryKeyName]
             ?: error("The value of the primary key is absent.")
         if (primaryKeyValue.toString() != entityId)

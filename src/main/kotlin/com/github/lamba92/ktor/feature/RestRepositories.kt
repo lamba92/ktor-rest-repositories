@@ -45,12 +45,15 @@ class RestRepositories private constructor(val configuration: Configuration) {
         private fun Routing.installRoutes(feature: RestRepositories) {
             feature.configuration.entitiesConfigurationMap.forEach { (table, entityData) ->
                 val logBuilder = StringBuilder()
-                logBuilder.append("Installing routes for ${table.entityClass?.simpleName}: ")
+                val longestNamedAuthRealm = entityData.configuredMethods.values
+                    .map { it.authName?.length ?: 7 }
+                    .maxBy { it } ?: 7
+                logBuilder.appendln("Installing routes for ${table.entityClass?.simpleName}: ")
                 entityData.configuredMethods.forEach { (httpMethod, behaviour) ->
                     val path = "${feature.configuration.path}/${entityData.entityPath}/{entityId}"
                     logBuilder.appendln(
-                        "${httpMethod.value.toUpperCase()} $path | Authentication realm: ${if (behaviour.isAuthenticated) behaviour.authName
-                            ?: "Default" else "None"}"
+                        "     - ${httpMethod.value.padEnd(7)} | Authentication realm: ${(if (behaviour.isAuthenticated) behaviour.authName
+                            ?: "Default" else "None").padEnd(longestNamedAuthRealm)} | $path"
                     )
                     if (behaviour.isAuthenticated)
                         route(path) {
@@ -86,7 +89,7 @@ class RestRepositories private constructor(val configuration: Configuration) {
                 .apply {
                     configuredMethods.forEach { (httpMethod, behaviour) ->
                         if (behaviour.action == null)
-                            behaviour.action = DefaultBehaviours(table, httpMethod)
+                            behaviour.action = DefaultBehaviour(table, httpMethod)
                     }
                 }
         }
@@ -95,10 +98,13 @@ class RestRepositories private constructor(val configuration: Configuration) {
 
             val configuredMethods = mutableMapOf<HttpMethod, Behaviour<T>>()
 
-            fun addMethod(httpMethod: HttpMethod, behaviourConfiguration: Behaviour<T>.() -> Unit) {
+            fun addMethod(httpMethod: HttpMethod, behaviourConfiguration: Behaviour<T>.() -> Unit = {}) {
                 configuredMethods[httpMethod] = Behaviour<T>()
                     .apply(behaviourConfiguration)
             }
+
+            fun addMethods(vararg httpMethods: HttpMethod, behaviourConfiguration: Behaviour<T>.() -> Unit = {}) =
+                httpMethods.forEach { addMethod(it, behaviourConfiguration) }
 
             data class Behaviour<T : Entity<T>>(
                 var isAuthenticated: Boolean = false,
