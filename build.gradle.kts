@@ -1,9 +1,12 @@
+@file:Suppress("unused")
+
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 val ktor_version: String by project
 val kotlin_version: String by project
 val ktorm_version: String by project
 val logback_version: String by project
+val kotlin_logging_version: String by project
 
 plugins {
     kotlin("jvm") version "1.3.41"
@@ -22,16 +25,22 @@ dependencies {
     implementation(kotlin("stdlib-jdk8"))
 
     implementation("ch.qos.logback:logback-classic:$logback_version")
-    implementation("me.liuwj.ktorm:ktorm-core:$ktorm_version")
+    api(ktorm("core"))
+    api(ktorm("jackson"))
 
-    implementation(ktor("server-core"))
-    implementation(ktor("jackson"))
-    implementation(ktor("auth"))
+    api(ktor("server-core"))
+    api(ktor("jackson"))
+    api(ktor("auth"))
+
     testImplementation(ktor("server-tests"))
+    testImplementation(ktorm("support-sqlite"))
 }
 
 fun DependencyHandler.ktor(module: String, version: String = ktor_version): Any =
     "io.ktor:ktor-$module:$version"
+
+fun DependencyHandler.ktorm(module: String, version: String = ktorm_version): Any =
+    "me.liuwj.ktorm:ktorm-$module:$version"
 
 tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "1.8"

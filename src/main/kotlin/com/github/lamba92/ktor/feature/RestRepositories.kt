@@ -1,11 +1,10 @@
 package com.github.lamba92.ktor.feature
 
-import io.ktor.application.Application
-import io.ktor.application.ApplicationCall
-import io.ktor.application.ApplicationFeature
+import io.ktor.application.*
 import io.ktor.auth.authenticate
+import io.ktor.features.ContentNegotiation
 import io.ktor.http.HttpMethod
-import io.ktor.http.HttpMethod.Companion.Get
+import io.ktor.jackson.jackson
 import io.ktor.routing.Routing
 import io.ktor.routing.method
 import io.ktor.routing.route
@@ -13,6 +12,7 @@ import io.ktor.routing.routing
 import io.ktor.util.AttributeKey
 import io.ktor.util.pipeline.PipelineInterceptor
 import me.liuwj.ktorm.entity.Entity
+import me.liuwj.ktorm.jackson.KtormModule
 import me.liuwj.ktorm.schema.Table
 import kotlin.collections.component1
 import kotlin.collections.component2
@@ -28,33 +28,48 @@ class RestRepositories private constructor(val configuration: Configuration) {
 
             val feature = RestRepositories(Configuration().apply(configure))
 
-            pipeline.routing {
-                installRoutes(feature)
+            with(pipeline) {
+                install(ContentNegotiation) {
+                    jackson {
+                        registerModule(KtormModule())
+                    }
+                }
+                routing {
+                    installRoutes(feature)
+                }
             }
 
             return feature
         }
 
         private fun Routing.installRoutes(feature: RestRepositories) {
-            route(feature.configuration.path) {
-                feature.configuration.entitiesConfiguration.forEach { entityData ->
-                    route("${entityData.entityPath}/{entityId}") {
-                        entityData.configuredMethods.forEach { (httpMethod, behaviour) ->
-                            if (behaviour.isAuthenticated)
-                                authenticate(behaviour.authName) {
-                                    method(httpMethod) { handle(behaviour.action!!) }
-                                }
-                            else
+            feature.configuration.entitiesConfigurationMap.forEach { (table, entityData) ->
+                val logBuilder = StringBuilder()
+                logBuilder.append("Installing routes for ${table.entityClass?.simpleName}: ")
+                entityData.configuredMethods.forEach { (httpMethod, behaviour) ->
+                    val path = "${feature.configuration.path}/${entityData.entityPath}/{entityId}"
+                    logBuilder.appendln(
+                        "${httpMethod.value.toUpperCase()} $path | Authentication realm: ${if (behaviour.isAuthenticated) behaviour.authName
+                            ?: "Default" else "None"}"
+                    )
+                    if (behaviour.isAuthenticated)
+                        route(path) {
+                            authenticate(behaviour.authName) {
                                 method(httpMethod) { handle(behaviour.action!!) }
+                            }
                         }
-                    }
+                    else
+                        route(path) {
+                            method(httpMethod) { handle(behaviour.action!!) }
+                        }
                 }
+                application.log.info(logBuilder.toString())
             }
         }
     }
 
     data class Configuration(
-        val entitiesConfigurationMap: MutableMap<Table<out Entity<*>>, EntityHttpMethods<out Entity<*>>> = mutableMapOf(),
+        val entitiesConfigurationMap: MutableMap<Table<out Entity<*>>, EntitySetup<out Entity<*>>> = mutableMapOf(),
         var path: String = "repositories"
     ) {
 
@@ -64,9 +79,9 @@ class RestRepositories private constructor(val configuration: Configuration) {
         inline fun <reified T : Entity<T>> registerEntity(
             table: Table<T>,
             entityPath: String = table::class.simpleName!!.toLowerCase(),
-            httpMethodConf: EntityHttpMethods<T>.() -> Unit
+            httpMethodConf: EntitySetup<T>.() -> Unit
         ) {
-            entitiesConfigurationMap[table] = EntityHttpMethods<T>(entityPath)
+            entitiesConfigurationMap[table] = EntitySetup<T>(entityPath)
                 .apply(httpMethodConf)
                 .apply {
                     configuredMethods.forEach { (httpMethod, behaviour) ->
@@ -76,7 +91,7 @@ class RestRepositories private constructor(val configuration: Configuration) {
                 }
         }
 
-        class EntityHttpMethods<T : Entity<T>>(var entityPath: String) {
+        class EntitySetup<T : Entity<T>>(var entityPath: String) {
 
             val configuredMethods = mutableMapOf<HttpMethod, Behaviour<T>>()
 
@@ -95,18 +110,4 @@ class RestRepositories private constructor(val configuration: Configuration) {
 
     }
 
-}
-
-fun main() {
-    RestRepositories.Configuration().apply {
-        path = "m_repos"
-
-        registerEntity(Users, "m_users") {
-            addMethod(Get) {
-                isAuthenticated = true
-
-            }
-        }
-
-    }
 }
