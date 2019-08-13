@@ -1,12 +1,12 @@
 package com.github.lamba92.ktor.feature
 
-import io.ktor.application.*
+import io.ktor.application.Application
+import io.ktor.application.ApplicationCall
+import io.ktor.application.ApplicationFeature
+import io.ktor.application.log
 import io.ktor.auth.authenticate
-import io.ktor.features.ContentNegotiation
 import io.ktor.http.HttpMethod
-import io.ktor.jackson.jackson
 import io.ktor.routing.Routing
-import io.ktor.routing.method
 import io.ktor.routing.route
 import io.ktor.routing.routing
 import io.ktor.util.AttributeKey
@@ -14,7 +14,6 @@ import io.ktor.util.pipeline.PipelineInterceptor
 import me.liuwj.ktorm.database.Database
 import me.liuwj.ktorm.database.TransactionIsolation
 import me.liuwj.ktorm.entity.Entity
-import me.liuwj.ktorm.jackson.KtormModule
 import me.liuwj.ktorm.schema.Table
 import kotlin.collections.component1
 import kotlin.collections.component2
@@ -31,19 +30,13 @@ class RestRepositories private constructor(val configuration: Configuration) {
             assert(conf.cleansedPath.isNotBlank()) { "Repository path is blank or empty" }
             val feature = RestRepositories(conf)
 
-            with(pipeline) {
-                install(ContentNegotiation) {
-                    jackson {
-                        registerModule(KtormModule())
-                    }
-                }
-                routing {
-                    installRoutes(feature)
-                }
+            pipeline.routing {
+                installRoutes(feature)
             }
 
             return feature
         }
+
 
         private fun Routing.installRoutes(feature: RestRepositories) {
             feature.configuration.entitiesConfigurationMap.forEach { (table, entityData) ->
@@ -63,44 +56,66 @@ class RestRepositories private constructor(val configuration: Configuration) {
                     if (behaviour.isAuthenticated)
                         route(path) {
                             authenticate(behaviour.authName) {
-                                method(httpMethod) { handle(behaviour.action!!) }
+                                //                                method(httpMethod) { handle { behaviour.singleItemAction!! }  }
                             }
                         }
                     else
                         route(path) {
-                            method(httpMethod) { handle(behaviour.action!!) }
+                            //                            method(httpMethod) { handle(behaviour.singleItemAction!!) }
                         }
                 }
                 application.log.info(logBuilder.toString())
             }
         }
+
+        private val Configuration.EntitySetup<*>.longestAuthName
+            get() = configuredMethods.values
+                .map { it.authName?.length ?: 7 }
+                .maxBy { it } ?: 7
+
+        private fun Routing.installRoutes2(feature: RestRepositories) {
+            feature.configuration.entitiesConfigurationMap2.forEach { (entityPath, entityData) ->
+                entityData
+            }
+        }
+
     }
 
     data class Configuration(
         val entitiesConfigurationMap: MutableMap<Table<out Entity<*>>, EntitySetup<out Entity<*>>> = mutableMapOf(),
+        val entitiesConfigurationMap2: MutableMap<String, EntitySetup<out Entity<*>>> = mutableMapOf(),
         var path: String = "repositories"
     ) {
 
         val cleansedPath
             get() = path.filter { !it.isWhitespace() }
 
-        inline fun <reified T : Entity<T>> registerEntity(
+        inline fun <reified T : Entity<T>, reified K> registerEntity(
             table: Table<T>,
             database: Database,
             defaultBehaviourIsolation: TransactionIsolation = TransactionIsolation.REPEATABLE_READ,
             httpMethodConf: EntitySetup<T>.() -> Unit
         ) {
-            entitiesConfigurationMap[table] = EntitySetup<T>(table::class.simpleName!!.toLowerCase())
+            val eSetup = EntitySetup<T>(table::class.simpleName!!.toLowerCase(), table)
                 .apply(httpMethodConf)
                 .apply {
                     configuredMethods.forEach { (httpMethod, behaviour) ->
-                        if (behaviour.action == null)
-                            behaviour.action = DefaultBehaviour(table, httpMethod, database, defaultBehaviourIsolation)
+                        if (behaviour.singleItemAction == null)
+                            behaviour.singleItemAction =
+                                DefaultBehaviours<T, K>(
+                                    DefaultBehaviours.ItemType.SINGLE,
+                                    table,
+                                    httpMethod,
+                                    database,
+                                    defaultBehaviourIsolation
+                                )
                     }
                 }
+            entitiesConfigurationMap[table] = eSetup
+            entitiesConfigurationMap2[eSetup.entityPath] = eSetup
         }
 
-        class EntitySetup<T : Entity<T>>(var entityPath: String) {
+        class EntitySetup<T : Entity<T>>(var entityPath: String, internal val table: Table<T>) {
 
             val configuredMethods = mutableMapOf<HttpMethod, Behaviour<T>>()
 
@@ -115,7 +130,8 @@ class RestRepositories private constructor(val configuration: Configuration) {
             data class Behaviour<T : Entity<T>>(
                 var isAuthenticated: Boolean = false,
                 var authName: String? = null,
-                var action: PipelineInterceptor<Unit, ApplicationCall>? = null
+                var singleItemAction: PipelineInterceptor<Unit, ApplicationCall>? = null,
+                var multipleItemsAction: PipelineInterceptor<Unit, ApplicationCall>? = null
             )
 
         }
