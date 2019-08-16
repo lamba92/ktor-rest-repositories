@@ -2,14 +2,14 @@ package com.github.lamba92.ktor.features.test
 
 import com.github.lamba92.ktor.feature.RestRepositories
 import com.github.lamba92.ktor.feature.restRepositories
-import com.github.lamba92.ktor.features.test.data.DoubleIdEntities
-import com.github.lamba92.ktor.features.test.data.IntIdEntities
-import com.github.lamba92.ktor.features.test.data.StringIdEntities
+import com.github.lamba92.ktor.features.test.data.*
 import io.ktor.application.Application
+import io.ktor.application.call
 import io.ktor.application.install
 import io.ktor.auth.Authentication
 import io.ktor.auth.UserIdPrincipal
 import io.ktor.auth.basic
+import io.ktor.auth.principal
 import io.ktor.features.ContentNegotiation
 import io.ktor.http.HttpMethod.Companion.Delete
 import io.ktor.http.HttpMethod.Companion.Get
@@ -17,7 +17,10 @@ import io.ktor.http.HttpMethod.Companion.Post
 import io.ktor.http.HttpMethod.Companion.Put
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.handleRequest
+import io.ktor.server.testing.setBody
 import io.ktor.server.testing.withTestApplication
+import io.ktor.util.InternalAPI
+import io.ktor.util.encodeBase64
 import it.lamba.utils.getResource
 import me.liuwj.ktorm.database.Database
 import me.liuwj.ktorm.database.TransactionIsolation.SERIALIZABLE
@@ -28,6 +31,7 @@ const val authVeryLongName = "wow-that-is-a-very-long-name-for-an-auth-realm-!"
 
 class Test {
 
+    @InternalAPI
     @Test
     fun testServer() = withTestApplication(Application::testModule) {
 
@@ -44,8 +48,16 @@ class Test {
         with(handleRequest {
             method = Put
             uri = "repositories/intidentities"
+            addHeader("Authorization", "Basic ${"ciao:rossi".toByteArray().encodeBase64()}")
+            setBody(
+                """{
+                    |    "value1": "mario"
+                    |    "value2": 4
+                    |}""".trimMargin()
+            )
         }) {
-
+            assertEquals(HttpStatusCode.OK, response.status())
+            assertEquals("{\"id\":2,\"value1\":\"mario\",\"value2\":4}", response.content)
         }
 
     }
@@ -61,8 +73,8 @@ fun Application.testModule() {
             }
         }
         basic {
-            validate {
-                UserIdPrincipal(it.name)
+            validate { (username, _) ->
+                UserIdPrincipal(username)
             }
         }
     }
@@ -70,28 +82,29 @@ fun Application.testModule() {
         restRepositories()
     }
     install(RestRepositories) {
-        registerEntity(StringIdEntities, db, SERIALIZABLE) {
-            addMethods(Get, Post, Put, Delete)
+        registerEntity<StringIdEntity, String>(StringIdEntities, db, SERIALIZABLE) {
+            addEndpoint(Put)
         }
-        registerEntity(DoubleIdEntities, db, SERIALIZABLE) {
-            addMethods(Post, Put, Delete) {
+        registerEntity<DoubleIdEntity, Double>(DoubleIdEntities, db, SERIALIZABLE) {
+            addEndpoints(Post, Put, Delete) {
                 isAuthenticated = true
-            }
-            addMethod(Get) {
-                singleItemAction = {
-
-                }
-                multipleItemsAction = {
-
+                restRepositoryInterceptor = { entity ->
+                    assert(entity.value1 == call.principal<UserIdPrincipal>()!!.name) { "value1 != userId" }
+                    entity
                 }
             }
+            addEndpoint(Get)
         }
-        registerEntity(IntIdEntities, db, SERIALIZABLE) {
-            addMethods(Post, Put, Delete) {
+        registerEntity<IntIdEntity, Int>(IntIdEntities, db, SERIALIZABLE) {
+            addEndpoints(Post, Put, Delete) {
                 isAuthenticated = true
                 authName = authVeryLongName
+                restRepositoryInterceptor = { entity ->
+                    assert(entity.value1 == call.principal<UserIdPrincipal>()!!.name) { "value1 != userId" }
+                    entity
+                }
             }
-            addMethod(Get)
+            addEndpoint(Get)
         }
     }
 }

@@ -1,7 +1,9 @@
 package com.github.lamba92.ktor.feature
 
-import com.github.lamba92.ktor.feature.DefaultBehaviours.ItemType.MULTIPLE
-import com.github.lamba92.ktor.feature.DefaultBehaviours.ItemType.SINGLE
+import com.github.lamba92.ktor.feature.DefaultBehaviours.EndpointMultiplicity.MULTIPLE
+import com.github.lamba92.ktor.feature.DefaultBehaviours.EndpointMultiplicity.SINGLE
+import com.github.lamba92.ktor.feature.RestRepositories.Configuration.InterceptorsContainer
+import com.github.lamba92.ktor.feature.RestRepositories.Feature.entityIdTag
 import io.ktor.application.ApplicationCall
 import io.ktor.application.call
 import io.ktor.http.HttpMethod
@@ -22,16 +24,20 @@ import me.liuwj.ktorm.entity.Entity
 import me.liuwj.ktorm.entity.findById
 import me.liuwj.ktorm.schema.NestedBinding
 import me.liuwj.ktorm.schema.Table
+import java.util.*
 
 
 object DefaultBehaviours {
 
     inline fun <reified K> String.coerce() = when (K::class) {
-        Int::class -> toInt()
-        Double::class -> toDouble()
         String::class -> this
-        else -> throw error("Unable to automatically coerce type")
-    } as K
+        Int::class -> toInt()
+        Long::class -> toLong()
+        Float::class -> toFloat()
+        Double::class -> toDouble()
+        Date::class -> Date(toLong())
+        else -> throw error("Unable to coerce type")
+    }
 
     inline fun <reified T : Entity<T>, reified K> httpGetDefaultSingleItemBehaviour(
         table: Table<T>,
@@ -40,7 +46,7 @@ object DefaultBehaviours {
         crossinline customAction: RestRepositoryInterceptor<T> = { it }
     ): PipelineInterceptor<Unit, ApplicationCall> = {
         database.useTransaction(IO, isolation) {
-            table.findById(call.parameters["entityId"]!!.coerce<K>()!!)!!
+            table.findById(call.parameters[entityIdTag]!!.coerce<K>())!!
         }
             .let { customAction(it) }
             .let { call.respond(it) }
@@ -54,7 +60,7 @@ object DefaultBehaviours {
     ): PipelineInterceptor<Unit, ApplicationCall> = {
         val ids = call.receive<List<String>>()
         database.useTransaction(IO, isolation) {
-            ids.map { table.findById(it.coerce<K>()!!)!! }
+            ids.map { table.findById(it.coerce<K>())!! }
         }
             .map { customAction(it) }
             .let { call.respond(it) }
@@ -66,7 +72,7 @@ object DefaultBehaviours {
         isolation: TransactionIsolation,
         crossinline customAction: RestRepositoryInterceptor<T> = { it }
     ): PipelineInterceptor<Unit, ApplicationCall> = {
-        val entityId = call.parameters["entityId"]!!
+        val entityId = call.parameters[entityIdTag]!!
         val entityReceived = customAction(checkEntityIdAndRetrieveIt(table, entityId).first)
         database.useTransaction(IO, isolation) {
             table.updateColumnsByEntity(entityReceived)
@@ -96,10 +102,11 @@ object DefaultBehaviours {
         isolation: TransactionIsolation,
         crossinline customAction: RestRepositoryInterceptor<T> = { it }
     ): PipelineInterceptor<Unit, ApplicationCall> = {
-        val entityReceived = customAction(call.receive<T>())
+        val entityReceived = call.receive<T>()
+        val checkedEntity = customAction(entityReceived)
         database.useTransaction(IO, isolation) {
             table.insert {
-                entityReceived.properties.forEach { (name, value) ->
+                checkedEntity.properties.forEach { (name, value) ->
                     it[name] to value
                 }
             }
@@ -133,11 +140,13 @@ object DefaultBehaviours {
         crossinline customAction: RestRepositoryInterceptor<T> = { it }
     ): PipelineInterceptor<Unit, ApplicationCall> = {
         database.useTransaction(IO, isolation) {
-            table.findById(call.parameters["entityId"]!!.coerce<K>()!!)!!
+            table.findById(call.parameters[entityIdTag]!!.coerce<K>())!!
         }
             .let { customAction(it) }
-            .let { it.delete() }
-        call.respond(HttpStatusCode.OK)
+            .let { entity ->
+                database.useTransaction(IO, isolation) { entity.delete() }
+                call.respond(HttpStatusCode.OK)
+            }
     }
 
     inline fun <reified T : Entity<T>, reified K> httpDeleteDefaultMultipleItemBehaviour(
@@ -150,21 +159,24 @@ object DefaultBehaviours {
             .map { it.coerce<K>() }
             .let { ids ->
                 database.useTransaction(IO, isolation) {
-                    ids.map { table.findById(it!!)!! }
+                    ids.map { table.findById(it)!! }
                 }
             }
             .map { customAction(it) }
+            .map { entity ->
+                database.useTransaction(IO, isolation) { entity.delete() }
+            }
         call.respond(HttpStatusCode.OK)
     }
 
-    inline fun <reified T : Entity<T>, reified K> invoke(
-        itemType: ItemType,
+    inline operator fun <reified T : Entity<T>, reified K> invoke(
+        endpointMultiplicity: EndpointMultiplicity,
         table: Table<T>,
         httpMethod: HttpMethod,
         database: Database,
         isolation: TransactionIsolation,
         crossinline customAction: RestRepositoryInterceptor<T> = { it }
-    ): PipelineInterceptor<Unit, ApplicationCall> = when (itemType) {
+    ): PipelineInterceptor<Unit, ApplicationCall> = when (endpointMultiplicity) {
         SINGLE -> when (httpMethod) {
             Get -> httpGetDefaultSingleItemBehaviour<T, K>(table, database, isolation, customAction)
             Post -> httpPostDefaultSingleItemBehaviour<T, K>(table, database, isolation, customAction)
@@ -181,7 +193,32 @@ object DefaultBehaviours {
         }
     }
 
-    enum class ItemType {
+    inline operator fun <reified T : Entity<T>, reified K> invoke(
+        table: Table<T>,
+        httpMethod: HttpMethod,
+        database: Database,
+        isolation: TransactionIsolation,
+        crossinline customAction: RestRepositoryInterceptor<T>
+    ) = InterceptorsContainer(
+        invoke<T, K>(
+            SINGLE,
+            table,
+            httpMethod,
+            database,
+            isolation,
+            customAction
+        ),
+        invoke<T, K>(
+            MULTIPLE,
+            table,
+            httpMethod,
+            database,
+            isolation,
+            customAction
+        )
+    )
+
+    enum class EndpointMultiplicity {
         SINGLE, MULTIPLE
     }
 

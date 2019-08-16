@@ -12,10 +12,11 @@ import me.liuwj.ktorm.database.Transaction
 import me.liuwj.ktorm.database.TransactionIsolation
 import me.liuwj.ktorm.jackson.KtormModule
 
-fun ContentNegotiation.Configuration.restRepositories(jacksonCustomization: ObjectMapper.() -> Unit = {}) = jackson {
-    registerModule(KtormModule())
-    jacksonCustomization()
-}
+fun ContentNegotiation.Configuration.restRepositories(jacksonCustomization: ObjectMapper.() -> Unit = {}) =
+    jackson {
+        registerModule(KtormModule())
+        jacksonCustomization()
+    }
 
 suspend fun <T> Database.useTransaction(
     dispatcher: CoroutineDispatcher, isolation: TransactionIsolation = TransactionIsolation.REPEATABLE_READ,
@@ -23,3 +24,6 @@ suspend fun <T> Database.useTransaction(
 ) = withContext(dispatcher) { useTransaction(isolation, func) }
 
 typealias RestRepositoryInterceptor<K> = PipelineContext<Unit, ApplicationCall>.(K) -> K
+
+val String.withoutWhitespaces
+    get() = filter { !it.isWhitespace() }
