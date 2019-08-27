@@ -54,7 +54,7 @@ A the moment the implemented HTTP methods are `Get`, `Post`, `Put` (disabled at 
 registerEntity<StringIdEntity, String>(StringIdEntities, db, SERIALIZABLE) {
     addEndpoint(Get) {
         isAuthenticated = true
-        authName = "myAuth" // if not set, the default auth will be used 
+        authNames = listOf("myAuth") // if not set, the default auth will be used 
     }
 }
 ```
