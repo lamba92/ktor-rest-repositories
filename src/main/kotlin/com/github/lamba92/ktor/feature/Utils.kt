@@ -47,18 +47,26 @@ data class InterceptorsContainer(
         if (isAuthenticated)
             authenticate(authName) {
                 route("$entityPath/${RestRepositories.entityIdTag}") {
-                    method(httpMethod) { handle(single) }
+                    method(httpMethod) {
+                        handle(single)
+                    }
                 }
                 route(entityPath) {
-                    method(httpMethod) { handle(multiple) }
+                    method(httpMethod) {
+                        handle(multiple)
+                    }
                 }
             }
         else {
             route("$entityPath/${RestRepositories.entityIdTag}") {
-                method(httpMethod) { handle(single) }
+                method(httpMethod) {
+                    handle(single)
+                }
             }
             route(entityPath) {
-                method(httpMethod) { handle(multiple) }
+                method(httpMethod) {
+                    handle(multiple)
+                }
             }
         }
     }
