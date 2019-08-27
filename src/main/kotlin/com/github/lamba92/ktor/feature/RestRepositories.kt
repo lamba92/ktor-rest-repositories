@@ -55,11 +55,6 @@ class RestRepositories private constructor(val configuration: Configuration) {
                 field = value
             }
 
-        val EntitySetup<out Entity<*>>.longestAuthName
-            get() = configuredMethods.values
-                .map { it.authName?.length ?: 7 }
-                .maxBy { it } ?: 7
-
         inline fun <reified T : Entity<T>, reified K> registerEntity(
             table: Table<T>,
             database: Database,
@@ -84,11 +79,11 @@ class RestRepositories private constructor(val configuration: Configuration) {
                                 entityPath.withoutWhitespaces,
                                 httpMethod,
                                 behaviour.isAuthenticated,
-                                behaviour.authName
+                                behaviour.authNames
                             )
                         logBuilder.appendln(
-                            "     - ${httpMethod.value.padEnd(7)} | Authentication realm: ${(if (behaviour.isAuthenticated) behaviour.authName
-                                ?: "Default" else "None").padEnd(longestAuthName)} | ${repositoryPath.withoutWhitespaces}/${entityPath.withoutWhitespaces}"
+                            "     - ${httpMethod.value.padEnd(7)} | ${repositoryPath.withoutWhitespaces}/${entityPath.withoutWhitespaces} " +
+                                    "| Authentication realm/s: ${behaviour.authNames.joinToString { it ?: "Default" }}"
                         )
                     }
                     logger.info(logBuilder.toString())
@@ -112,7 +107,7 @@ class RestRepositories private constructor(val configuration: Configuration) {
 
             data class Behaviour<T : Entity<T>>(
                 var isAuthenticated: Boolean = false,
-                var authName: String? = null,
+                var authNames: List<String?> = mutableListOf(null),
                 var restRepositoryInterceptor: RestRepositoryInterceptor<T> = { it }
             )
 

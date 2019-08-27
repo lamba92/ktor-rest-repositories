@@ -42,10 +42,10 @@ data class InterceptorsContainer(
         entityPath: String,
         httpMethod: HttpMethod,
         isAuthenticated: Boolean,
-        authName: String?
+        authNames: List<String?>
     ): Route.() -> Unit = {
         if (isAuthenticated)
-            authenticate(authName) {
+            authenticate(*authNames.toTypedArray()) {
                 route("$entityPath/${RestRepositories.entityIdTag}") {
                     method(httpMethod) {
                         handle(single)

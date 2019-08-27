@@ -64,7 +64,7 @@ fun Application.testModule() {
         registerEntity<IntIdEntity, Int>(IntIdEntities, db, SERIALIZABLE) {
             addEndpoints(Post, Delete) {
                 isAuthenticated = true
-                authName = authVeryLongName
+                authNames = listOf(authVeryLongName)
                 restRepositoryInterceptor = { entity ->
                     assert(entity.value1 == call.principal<UserIdPrincipal>()!!.name) { "value1 != userId" }
                     entity
