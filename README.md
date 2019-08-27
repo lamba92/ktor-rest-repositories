@@ -1,4 +1,4 @@
-# Ktor Rest Repositories Feature [![Build Status](https://travis-ci.org/lamba92/ktor-rest-repositories.svg?branch=master)](https://travis-ci.org/lamba92/ktor-rest-repositories)
+# Ktor Rest Repositories Feature [![Build Status](https://travis-ci.org/lamba92/ktor-rest-repositories.svg?branch=master)](https://travis-ci.org/lamba92/ktor-rest-repositories) [![](https://jitpack.io/v/lamba92/ktor-rest-repositories.svg)](https://jitpack.io/#lamba92/ktor-rest-repositories)
 
 This project is an attempt to easily build routes for Entities declared using [Ktorm](https://github.com/vincentlauvlwj/Ktorm) (hoping one day to support Exposed as well, [but no serialization so far](https://github.com/JetBrains/Exposed/issues/497)).
 
