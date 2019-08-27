@@ -1,17 +1,13 @@
 package com.github.lamba92.ktor.feature
 
 import io.ktor.application.Application
-import io.ktor.application.ApplicationCall
 import io.ktor.application.ApplicationFeature
 import io.ktor.application.log
 import io.ktor.http.HttpMethod
-import io.ktor.http.HttpMethod.Companion.Put
 import io.ktor.routing.Route
-import io.ktor.routing.method
 import io.ktor.routing.route
 import io.ktor.routing.routing
 import io.ktor.util.AttributeKey
-import io.ktor.util.pipeline.PipelineInterceptor
 import me.liuwj.ktorm.database.Database
 import me.liuwj.ktorm.database.TransactionIsolation
 import me.liuwj.ktorm.entity.Entity
@@ -34,8 +30,9 @@ class RestRepositories private constructor(val configuration: Configuration) {
             assert(conf.repositoryPath.withoutWhitespaces.isNotBlank()) { "Repository path cannot be blank or empty" }
             val feature = RestRepositories(conf)
 
-            conf.builtRoutes.forEach {
-                pipeline.routing {
+
+            pipeline.routing {
+                conf.builtRoutes.forEach {
                     route(conf.repositoryPath, it)
                 }
             }
@@ -69,49 +66,34 @@ class RestRepositories private constructor(val configuration: Configuration) {
             isolation: TransactionIsolation = TransactionIsolation.REPEATABLE_READ,
             httpMethodConf: EntitySetup<T>.() -> Unit
         ) {
-            val logBuilder = StringBuilder()
             EntitySetup<T>(table::class.simpleName!!.toLowerCase())
                 .apply(httpMethodConf)
                 .apply {
+                    val logBuilder = StringBuilder()
                     assert(entityPath.withoutWhitespaces.isNotBlank()) { "${T::class.simpleName} path cannot be blank or empty" }
                     logBuilder.appendln("Building methods for entity ${T::class.simpleName}:")
                     configuredMethods.forEach { (httpMethod, behaviour) ->
-                        if (httpMethod != Put) {
-                            entitiesConfigurationMap[entityPath.withoutWhitespaces to httpMethod] =
-                                DefaultBehaviours<T, K>(
-                                    table,
-                                    httpMethod,
-                                    database,
-                                    isolation,
-                                    behaviour.restRepositoryInterceptor
-                                ).toRoute(entityPath.withoutWhitespaces, httpMethod)
-                            logBuilder.appendln(
-                                "     - ${httpMethod.value.padEnd(7)} | Authentication realm: ${(if (behaviour.isAuthenticated) behaviour.authName
-                                    ?: "Default" else "None").padEnd(longestAuthName)} | ${repositoryPath.withoutWhitespaces}/${entityPath.withoutWhitespaces}"
+                        entitiesConfigurationMap[entityPath.withoutWhitespaces to httpMethod] =
+                            getDefaultBehaviour<T, K>(
+                                table,
+                                httpMethod,
+                                database,
+                                isolation,
+                                behaviour.restRepositoryInterceptor
+                            ).toRoute(
+                                entityPath.withoutWhitespaces,
+                                httpMethod,
+                                behaviour.isAuthenticated,
+                                behaviour.authName
                             )
-                        } else
-                            logBuilder.appendln(
-                                "     - ${httpMethod.value.padEnd(7)} | Authentication realm: ${(if (behaviour.isAuthenticated) behaviour.authName
-                                    ?: "Default" else "None").padEnd(longestAuthName)} | ${repositoryPath.withoutWhitespaces}/${entityPath.withoutWhitespaces} | DISABLED DUE TO BUG"
-                            )
-                        logger.info(logBuilder.toString())
+                        logBuilder.appendln(
+                            "     - ${httpMethod.value.padEnd(7)} | Authentication realm: ${(if (behaviour.isAuthenticated) behaviour.authName
+                                ?: "Default" else "None").padEnd(longestAuthName)} | ${repositoryPath.withoutWhitespaces}/${entityPath.withoutWhitespaces}"
+                        )
                     }
+                    logger.info(logBuilder.toString())
                 }
 
-        }
-
-        data class InterceptorsContainer(
-            val single: PipelineInterceptor<Unit, ApplicationCall>,
-            val multiple: PipelineInterceptor<Unit, ApplicationCall>
-        ) {
-            fun toRoute(entityPath: String, httpMethod: HttpMethod): Route.() -> Unit = {
-                route("$entityPath/$entityIdTag") {
-                    method(httpMethod) { handle(single) }
-                }
-                route(entityPath) {
-                    method(httpMethod) { handle(multiple) }
-                }
-            }
         }
 
         class EntitySetup<T : Entity<T>>(

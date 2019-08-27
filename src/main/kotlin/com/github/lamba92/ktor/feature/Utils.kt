@@ -2,9 +2,15 @@ package com.github.lamba92.ktor.feature
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.ktor.application.ApplicationCall
+import io.ktor.auth.authenticate
 import io.ktor.features.ContentNegotiation
+import io.ktor.http.HttpMethod
 import io.ktor.jackson.jackson
+import io.ktor.routing.Route
+import io.ktor.routing.method
+import io.ktor.routing.route
 import io.ktor.util.pipeline.PipelineContext
+import io.ktor.util.pipeline.PipelineInterceptor
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import me.liuwj.ktorm.database.Database
@@ -27,3 +33,33 @@ typealias RestRepositoryInterceptor<K> = PipelineContext<Unit, ApplicationCall>.
 
 val String.withoutWhitespaces
     get() = filter { !it.isWhitespace() }
+
+data class InterceptorsContainer(
+    val single: PipelineInterceptor<Unit, ApplicationCall>,
+    val multiple: PipelineInterceptor<Unit, ApplicationCall>
+) {
+    fun toRoute(
+        entityPath: String,
+        httpMethod: HttpMethod,
+        isAuthenticated: Boolean,
+        authName: String?
+    ): Route.() -> Unit = {
+        if (isAuthenticated)
+            authenticate(authName) {
+                route("$entityPath/${RestRepositories.entityIdTag}") {
+                    method(httpMethod) { handle(single) }
+                }
+                route(entityPath) {
+                    method(httpMethod) { handle(multiple) }
+                }
+            }
+        else {
+            route("$entityPath/${RestRepositories.entityIdTag}") {
+                method(httpMethod) { handle(single) }
+            }
+            route(entityPath) {
+                method(httpMethod) { handle(multiple) }
+            }
+        }
+    }
+}

@@ -1,4 +1,4 @@
-@file:Suppress("unused")
+@file:Suppress("unused", "PropertyName")
 
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
@@ -9,10 +9,11 @@ val logback_version: String by project
 val kotlin_logging_version: String by project
 
 plugins {
-    kotlin("jvm") version "1.3.41"
+    kotlin("jvm") version "1.3.50"
+    id("maven-publish")
 }
 
-group = "com.lgithub.lamba92"
+group = "com.github.lamba92"
 version = "0.0.1"
 
 repositories {
@@ -47,4 +48,20 @@ fun DependencyHandler.ktorm(module: String, version: String = ktorm_version): An
 
 tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "1.8"
+}
+
+val sourcesJar by tasks.creating(Jar::class) {
+    group = JavaBasePlugin.DOCUMENTATION_GROUP
+    description = "Assembles sources JAR"
+    archiveClassifier.set("sources")
+    from(sourceSets.getAt("main").allSource)
+}
+
+publishing {
+    publications {
+        create<MavenPublication>(name) {
+            from(components["java"])
+            artifact(sourcesJar)
+        }
+    }
 }
