@@ -1,4 +1,4 @@
-# Ktor Rest Repositories Feature
+# Ktor Rest Repositories Feature [![Build Status](https://travis-ci.org/lamba92/ktor-rest-repositories.svg?branch=master)](https://travis-ci.org/lamba92/ktor-rest-repositories)
 
 This project is an attempt to easily build routes for Entities declared using [Ktorm](https://github.com/vincentlauvlwj/Ktorm) (hoping one day to support Exposed as well, [but no serialization so far](https://github.com/JetBrains/Exposed/issues/497)).
 
@@ -74,5 +74,14 @@ registerEntity<StringIdEntity, String>(StringIdEntities, db, SERIALIZABLE) {
 ```
 The entity eventually modified must be returned. When setting `restRepositoryInterceptor` inside `Post` or `Put`, the entity returned is the one that will be written on the DB. 
 
-### Gradle
+### Gradle [![](https://jitpack.io/v/lamba92/ktor-rest-repositories.svg)](https://jitpack.io/#lamba92/ktor-rest-repositories)
 
+```kotlin
+repositories {
+    maven("https://jitpack.io")
+}
+
+dependencies {
+    implementation("com.github.lamba92", "ktor-rest-repositories", "{latest-tag}") // can use "-SNAPSHOT" as tag for latest WIP
+}
+```

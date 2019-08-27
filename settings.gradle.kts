@@ -1,1 +1,1 @@
-rootProject.name = "ktor-ktorm-rest-repositories"
+rootProject.name = "ktor-rest-repositories"
