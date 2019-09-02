@@ -2,7 +2,7 @@
 
 This project is an attempt to easily build routes for Entities declared using [Ktorm](https://github.com/vincentlauvlwj/Ktorm) (hoping one day to support Exposed as well, [but no serialization so far](https://github.com/JetBrains/Exposed/issues/497)).
 
-**NB**: at the moment **nothing is working** and I'm doing this in my free time! Help would be much appreciated :P
+**NB**: at the moment **HTTP PUT is making the lib crash**. Any help is very much appreciated! 
 
 # Usage
 
