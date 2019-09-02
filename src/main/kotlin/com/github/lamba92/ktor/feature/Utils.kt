@@ -7,6 +7,8 @@ import io.ktor.auth.authenticate
 import io.ktor.features.ContentNegotiation
 import io.ktor.http.ContentType.Application.Json
 import io.ktor.http.HttpMethod
+import io.ktor.http.HttpMethod.Companion.Post
+import io.ktor.http.HttpMethod.Companion.Put
 import io.ktor.jackson.jackson
 import io.ktor.routing.Route
 import io.ktor.routing.contentType
@@ -32,7 +34,7 @@ suspend fun <T> Database.useTransaction(
     func: (Transaction) -> T
 ) = withContext(dispatcher) { useTransaction(isolation, func) }
 
-typealias RestRepositoryInterceptor<K> = PipelineContext<Unit, ApplicationCall>.(K) -> K
+typealias RestRepositoryInterceptor<K> = PipelineContext<Unit, ApplicationCall>.(K) -> K?
 
 val String.withoutWhitespaces
     get() = filter { !it.isWhitespace() }
@@ -55,7 +57,10 @@ data class InterceptorsContainer(
     private fun buildRoutes(entityPath: String, httpMethod: HttpMethod): Route.() -> Unit = {
         route("$entityPath/{$entityIdTag}") {
             method(httpMethod) {
-                handle(single)
+                if (httpMethod == Post || httpMethod == Put)
+                    contentType(Json) { handle(single) }
+                else
+                    handle(single)
             }
         }
         route(entityPath) {

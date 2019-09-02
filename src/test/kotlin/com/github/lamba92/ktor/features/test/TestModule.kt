@@ -97,3 +97,19 @@ fun Application.httpPutErrorTestModule() {
     }
 
 }
+
+fun Application.integerTestModule() {
+
+    setupApplication()
+
+    install(RestRepositories) {
+        registerEntity<IntIdEntity, Int>(IntIdEntities, testDatabase, SERIALIZABLE) {
+            addEndpoints(Get, Post, Delete)
+        }
+    }
+
+    routing {
+        trace { application.log.debug(it.buildText()) }
+    }
+}
+

@@ -13,7 +13,6 @@ import io.ktor.http.HttpMethod.Companion.Put
 import io.ktor.http.HttpStatusCode
 import io.ktor.request.receive
 import io.ktor.response.respond
-import io.ktor.util.pipeline.PipelineContext
 import io.ktor.util.pipeline.PipelineInterceptor
 import kotlinx.coroutines.Dispatchers.IO
 import me.liuwj.ktorm.database.Database
@@ -46,7 +45,7 @@ inline fun <reified T : Entity<T>, reified K> httpGetDefaultSingleItemBehaviour(
         table.findById(call.parameters[entityIdTag]!!.coerce<K>())!!
     }
         .let { customAction(it) }
-        .let { call.respond(it) }
+        .let { call.respond(it ?: HttpStatusCode.Forbidden) }
 }
 
 inline fun <reified T : Entity<T>, reified K> httpGetDefaultMultipleItemBehaviour(
@@ -57,11 +56,19 @@ inline fun <reified T : Entity<T>, reified K> httpGetDefaultMultipleItemBehaviou
 ): PipelineInterceptor<Unit, ApplicationCall> = {
     val ids = call.receive<List<Any>>()
         .map { it.toString().coerce<K>() }
-    database.useTransaction(IO, isolation) {
-        ids.map { table.findById(it)!! }
-    }
-        .map { customAction(it) }
-        .let { call.respond(it) }
+    if (ids.isEmpty())
+        call.respond(HttpStatusCode.BadRequest)
+    else
+        database.useTransaction(IO, isolation) {
+            ids.map { table.findById(it)!! }
+        }
+            .mapNotNull { customAction(it) }
+            .let {
+                if (it.isEmpty())
+                    call.respond(HttpStatusCode.Forbidden)
+                else
+                    call.respond(it)
+            }
 }
 
 inline fun <reified T : Entity<T>, reified K> httpPostDefaultSingleItemBehaviour(
@@ -71,10 +78,14 @@ inline fun <reified T : Entity<T>, reified K> httpPostDefaultSingleItemBehaviour
     crossinline customAction: RestRepositoryInterceptor<T> = { it }
 ): PipelineInterceptor<Unit, ApplicationCall> = {
     val entityId = call.parameters[entityIdTag]!!
-    val entityReceived = customAction(checkEntityIdAndRetrieveIt(table, entityId).first)
-    database.useTransaction(IO, isolation) {
-        table.updateColumnsByEntity(entityReceived)
-    }.let { call.respond(it) }
+    val entityReceived = customAction(checkEntityId(table, entityId, call.receive()))
+    if (entityReceived != null)
+        database.useTransaction(IO, isolation) {
+            table.updateColumnsByEntity(entityReceived)
+        }
+            .let { call.respond(it) }
+    else
+        call.respond(HttpStatusCode.Forbidden)
 }
 
 inline fun <reified T : Entity<T>, reified K> httpPostDefaultMultipleItemBehaviour(
@@ -83,16 +94,23 @@ inline fun <reified T : Entity<T>, reified K> httpPostDefaultMultipleItemBehavio
     isolation: TransactionIsolation,
     crossinline customAction: RestRepositoryInterceptor<T> = { it }
 ): PipelineInterceptor<Unit, ApplicationCall> = {
-    call.receive<List<Any>>()
-        .map { it.toString() }
-        .map { checkEntityIdAndRetrieveIt(table, it) }
-        .map { customAction(it.first) }
-        .map { entityReceived ->
-            database.useTransaction(IO, isolation) {
-                table.updateColumnsByEntity(entityReceived)
+    val entities = call.receive<List<T>>()
+
+    if (entities.isEmpty())
+        call.respond(HttpStatusCode.BadRequest)
+    else
+        entities.mapNotNull { customAction(it) }
+            .map { entityReceived ->
+                database.useTransaction(IO, isolation) {
+                    table.updateColumnsByEntity(entityReceived)
+                }
             }
-        }
-        .let { call.respond(it) }
+            .let {
+                if (it.isEmpty())
+                    call.respond(HttpStatusCode.Forbidden)
+                else
+                    call.respond(it)
+            }
 }
 
 inline fun <reified T : Entity<T>, reified K> httpPutDefaultSingleItemBehaviour(
@@ -101,11 +119,11 @@ inline fun <reified T : Entity<T>, reified K> httpPutDefaultSingleItemBehaviour(
     isolation: TransactionIsolation,
     crossinline customAction: RestRepositoryInterceptor<T> = { it }
 ): PipelineInterceptor<Unit, ApplicationCall> = {
-    val entityReceived = call.receive<T>()
-    val checkedEntity = customAction(entityReceived)
+    val entityId = call.parameters[entityIdTag]!!
+    val entityReceived = customAction(checkEntityId(table, entityId, call.receive()))
     database.useTransaction(IO, isolation) {
         table.insert {
-            checkedEntity.properties.forEach { (name, value) ->
+            entityReceived.properties.forEach { (name, value) ->
                 it[name] to value
             }
         }
@@ -221,18 +239,18 @@ enum class EndpointMultiplicity {
     SINGLE, MULTIPLE
 }
 
-suspend inline fun <reified T : Entity<T>> PipelineContext<Unit, ApplicationCall>.checkEntityIdAndRetrieveIt(
+inline fun <reified T : Entity<T>> checkEntityId(
     table: Table<T>,
-    entityId: String
-): Pair<T, Any> {
-    val entityReceived = call.receive<T>()
+    entityId: String,
+    entityReceived: T
+): T {
     table.primaryKey ?: error("Table ${table.tableName} doesn't have a primary key.")
     val primaryKeyName = (table.primaryKey!!.binding as NestedBinding).properties[0].name
     val primaryKeyValue = entityReceived[primaryKeyName]
         ?: error("The value of the primary key is absent.")
     if (primaryKeyValue.toString() != entityId)
         error("ID of deserialized entity does not match the ID in the URL")
-    return entityReceived to primaryKeyValue
+    return entityReceived
 }
 
 fun <E : Entity<E>> Table<E>.updateColumnsByEntity(entity: E): E {
