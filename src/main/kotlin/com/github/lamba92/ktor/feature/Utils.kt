@@ -1,12 +1,15 @@
 package com.github.lamba92.ktor.feature
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.github.lamba92.ktor.feature.RestRepositories.Feature.entityIdTag
 import io.ktor.application.ApplicationCall
 import io.ktor.auth.authenticate
 import io.ktor.features.ContentNegotiation
+import io.ktor.http.ContentType.Application.Json
 import io.ktor.http.HttpMethod
 import io.ktor.jackson.jackson
 import io.ktor.routing.Route
+import io.ktor.routing.contentType
 import io.ktor.routing.method
 import io.ktor.routing.route
 import io.ktor.util.pipeline.PipelineContext
@@ -43,31 +46,24 @@ data class InterceptorsContainer(
         httpMethod: HttpMethod,
         isAuthenticated: Boolean,
         authNames: List<String?>
-    ): Route.() -> Unit = {
-        if (isAuthenticated)
-            authenticate(*authNames.toTypedArray()) {
-                route("$entityPath/${RestRepositories.entityIdTag}") {
-                    method(httpMethod) {
-                        handle(single)
-                    }
-                }
-                route(entityPath) {
-                    method(httpMethod) {
-                        handle(multiple)
-                    }
-                }
-            }
-        else {
-            route("$entityPath/${RestRepositories.entityIdTag}") {
+    ): Route.() -> Unit {
+        val routes: Route.() -> Unit = {
+            route("$entityPath/{$entityIdTag}") {
                 method(httpMethod) {
                     handle(single)
                 }
             }
             route(entityPath) {
                 method(httpMethod) {
-                    handle(multiple)
+                    contentType(Json) {
+                        handle(multiple)
+                    }
                 }
             }
         }
+        if (isAuthenticated)
+            return { authenticate(*authNames.toTypedArray(), build = routes) }
+        else
+            return { routes() }
     }
 }

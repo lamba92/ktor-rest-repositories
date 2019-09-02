@@ -55,9 +55,10 @@ inline fun <reified T : Entity<T>, reified K> httpGetDefaultMultipleItemBehaviou
     isolation: TransactionIsolation,
     crossinline customAction: RestRepositoryInterceptor<T> = { it }
 ): PipelineInterceptor<Unit, ApplicationCall> = {
-    val ids = call.receive<List<String>>()
+    val ids = call.receive<List<Any>>()
+        .map { it.toString().coerce<K>() }
     database.useTransaction(IO, isolation) {
-        ids.map { table.findById(it.coerce<K>())!! }
+        ids.map { table.findById(it)!! }
     }
         .map { customAction(it) }
         .let { call.respond(it) }
@@ -82,7 +83,8 @@ inline fun <reified T : Entity<T>, reified K> httpPostDefaultMultipleItemBehavio
     isolation: TransactionIsolation,
     crossinline customAction: RestRepositoryInterceptor<T> = { it }
 ): PipelineInterceptor<Unit, ApplicationCall> = {
-    call.receive<List<String>>()
+    call.receive<List<Any>>()
+        .map { it.toString() }
         .map { checkEntityIdAndRetrieveIt(table, it) }
         .map { customAction(it.first) }
         .map { entityReceived ->
@@ -152,8 +154,8 @@ inline fun <reified T : Entity<T>, reified K> httpDeleteDefaultMultipleItemBehav
     isolation: TransactionIsolation,
     crossinline customAction: RestRepositoryInterceptor<T> = { it }
 ): PipelineInterceptor<Unit, ApplicationCall> = {
-    call.receive<List<String>>()
-        .map { it.coerce<K>() }
+    call.receive<List<Any>>()
+        .map { it.toString().coerce<K>() }
         .let { ids ->
             database.useTransaction(IO, isolation) {
                 ids.map { table.findById(it)!! }
