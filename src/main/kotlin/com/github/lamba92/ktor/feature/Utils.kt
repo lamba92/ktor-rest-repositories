@@ -46,24 +46,25 @@ data class InterceptorsContainer(
         httpMethod: HttpMethod,
         isAuthenticated: Boolean,
         authNames: List<String?>
-    ): Route.() -> Unit {
-        val routes: Route.() -> Unit = {
-            route("$entityPath/{$entityIdTag}") {
-                method(httpMethod) {
-                    handle(single)
-                }
+    ): Route.() -> Unit = if (isAuthenticated) {
+        { authenticate(*authNames.toTypedArray(), build = buildRoutes(entityPath, httpMethod)) }
+    } else {
+        { buildRoutes(entityPath, httpMethod)() }
+    }
+
+    private fun buildRoutes(entityPath: String, httpMethod: HttpMethod): Route.() -> Unit = {
+        route("$entityPath/{$entityIdTag}") {
+            method(httpMethod) {
+                handle(single)
             }
-            route(entityPath) {
-                method(httpMethod) {
-                    contentType(Json) {
-                        handle(multiple)
-                    }
+        }
+        route(entityPath) {
+            method(httpMethod) {
+                contentType(Json) {
+                    handle(multiple)
                 }
             }
         }
-        if (isAuthenticated)
-            return { authenticate(*authNames.toTypedArray(), build = routes) }
-        else
-            return { routes() }
     }
+
 }
